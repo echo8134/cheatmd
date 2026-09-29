@@ -98,16 +98,20 @@ func buildComposeMarkdown(name, desc, command string) string {
 	vars := parser.ExtractVars(command, true, true)
 
 	// Rewrite the command to respect the user's configured var_syntax
-	switch config.Get().VarSyntax {
-	case "dollar", "":
-		for _, v := range vars {
-			command = strings.ReplaceAll(command, "<"+v+">", "$"+v)
+	syntax := config.Get().VarSyntax
+	var rewritten strings.Builder
+	last := 0
+	parser.WalkVars(command, syntax == "angle", syntax == "dollar" || syntax == "", func(start, end int, name string) {
+		rewritten.WriteString(command[last:start])
+		if syntax == "angle" {
+			rewritten.WriteString("<" + name + ">")
+		} else {
+			rewritten.WriteString("$" + name)
 		}
-	case "angle":
-		for _, v := range vars {
-			command = strings.ReplaceAll(command, "$"+v, "<"+v+">")
-		}
-	}
+		last = end
+	})
+	rewritten.WriteString(command[last:])
+	command = rewritten.String()
 
 	var sb strings.Builder
 	sb.WriteString("\n# ")
