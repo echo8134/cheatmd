@@ -133,15 +133,16 @@ func (m *mainModel) renderVarHeader(width int) string {
 	b := getBuilder()
 	defer putBuilder(b)
 
-	progressCmd := m.varState.cheat.Command
+	replacements := make(map[string]string, len(m.varState.vars))
 	for i, vs := range m.varState.vars {
 		if vs.resolved {
-			progressCmd = executor.ReplaceVar(progressCmd, vs.def.Name, styles.Header.Render(vs.value), config.Get().VarSyntax)
+			replacements[vs.def.Name] = styles.Header.Render(vs.value)
 		} else if i == m.varState.currentIdx {
 			displayStr := formatVarName(m.varState.cheat.Command, vs.def.Name)
-			progressCmd = executor.ReplaceVar(progressCmd, vs.def.Name, styles.Cursor.Render(displayStr), config.Get().VarSyntax)
+			replacements[vs.def.Name] = styles.Cursor.Render(displayStr)
 		}
 	}
+	progressCmd := executor.SubstituteVars(m.varState.cheat.Command, replacements, config.Get().VarSyntax)
 	b.WriteString(progressCmd)
 	b.WriteString("\n")
 
