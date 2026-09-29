@@ -8,25 +8,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"sort"
 	"strings"
 
 	"github.com/cheatmd-dev/cheatmd/pkg/config"
 	"github.com/cheatmd-dev/cheatmd/pkg/parser"
 )
-
-// sortedNames returns variable names sorted longest-first to prevent
-// prefix collisions during substitution (e.g., $s matching inside $scheme).
-func sortedNames(scope map[string]string) []string {
-	names := make([]string, 0, len(scope))
-	for name := range scope {
-		names = append(names, name)
-	}
-	sort.Slice(names, func(i, j int) bool {
-		return len(names[i]) > len(names[j])
-	})
-	return names
-}
 
 // ============================================================================
 // Shell Runner Interface
@@ -164,12 +150,7 @@ func (e *Executor) Execute(command string) error {
 
 // BuildFinalCommand substitutes all variables in a cheat's command
 func (e *Executor) BuildFinalCommand(cheat *parser.Cheat) string {
-	result := SubstituteVars(cheat.Command, cheat.Scope, config.Get().VarSyntax)
-
-	// Handle escaped dollar signs
-	result = strings.ReplaceAll(result, "\\$", "$")
-
-	return result
+	return substituteVars(cheat.Command, cheat.Scope, config.Get().VarSyntax, true)
 }
 
 // SubstituteVars replaces variables in a string using the given scope.
@@ -178,19 +159,29 @@ func (e *Executor) BuildFinalCommand(cheat *parser.Cheat) string {
 //   - "angle": replaces <name>
 //   - "both": replaces both $name and <name>
 func SubstituteVars(s string, scope map[string]string, syntax string) string {
-	for _, name := range sortedNames(scope) {
-		val := scope[name]
-		switch syntax {
-		case "angle":
-			s = strings.ReplaceAll(s, "<"+name+">", val)
-		case "both":
-			s = strings.ReplaceAll(s, "$"+name, val)
-			s = strings.ReplaceAll(s, "<"+name+">", val)
-		default: // "dollar"
-			s = strings.ReplaceAll(s, "$"+name, val)
+	return substituteVars(s, scope, syntax, false)
+}
+
+func substituteVars(s string, scope map[string]string, syntax string, unescape bool) string {
+	var out strings.Builder
+	last := 0
+	writeTemplate := func(text string) {
+		if unescape {
+			text = strings.ReplaceAll(text, "\\$", "$")
 		}
+		out.WriteString(text)
 	}
-	return s
+	parser.WalkVars(s, syntax != "angle", syntax == "angle" || syntax == "both", func(start, end int, name string) {
+		value, ok := scope[name]
+		if !ok {
+			return
+		}
+		writeTemplate(s[last:start])
+		out.WriteString(value)
+		last = end
+	})
+	writeTemplate(s[last:])
+	return out.String()
 }
 
 // ============================================================================
