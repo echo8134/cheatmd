@@ -83,8 +83,9 @@ type mainModel struct {
 	lastQuery string
 
 	// Variable resolution state (only used in phaseVarResolve)
-	varState        *varResolveState
-	shellGeneration uint64
+	varState           *varResolveState
+	shellGeneration    uint64
+	pendingShellResult *shellResultMsg
 
 	// Substitute search state (only used in phaseSubstituteSearch)
 	subState *substituteSearchState
@@ -195,7 +196,27 @@ func (m *mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.textInput.Width = safeTextInputWidth(m.width)
 	}
 
-	// Dispatch based on phase
+	if result, ok := msg.(shellResultMsg); ok {
+		if m.varState == nil || result.generation != m.shellGeneration {
+			return m, nil
+		}
+		if m.phase != phaseVarResolve {
+			result.preserveInput = true
+			m.pendingShellResult = &result
+			return m, nil
+		}
+		return m.handleShellResult(result)
+	}
+	model, cmd := m.updatePhase(msg)
+	if m.phase == phaseVarResolve && m.pendingShellResult != nil {
+		result := *m.pendingShellResult
+		m.pendingShellResult = nil
+		return model, tea.Batch(cmd, func() tea.Msg { return result })
+	}
+	return model, cmd
+}
+
+func (m *mainModel) updatePhase(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch m.phase {
 	case phasePreview:
 		return m.updatePreview(msg)

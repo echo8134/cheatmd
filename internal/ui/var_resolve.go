@@ -18,9 +18,10 @@ import (
 
 // shellResultMsg is sent when a shell command completes.
 type shellResultMsg struct {
-	options    []string
-	err        error
-	generation uint64
+	options       []string
+	err           error
+	generation    uint64
+	preserveInput bool
 }
 
 // ============================================================================
@@ -85,6 +86,7 @@ func (m *mainModel) startVarResolutionInternal() {
 // command to run a shell command to get options.
 func (m *mainModel) prepareCurrentVar() tea.Cmd {
 	m.shellGeneration++
+	m.pendingShellResult = nil
 	if m.varState == nil || m.varState.currentIdx >= len(m.varState.vars) {
 		if m.varState != nil {
 			for _, vs := range m.varState.vars {
@@ -246,7 +248,9 @@ func (m *mainModel) handleShellResult(msg shellResultMsg) (tea.Model, tea.Cmd) {
 		if m.varState.picker != nil {
 			m.varState.picker.SetItems(nil)
 		}
-		m.textInput.SetValue(vs.prefill)
+		if !msg.preserveInput {
+			m.textInput.SetValue(vs.prefill)
+		}
 		return m, nil
 	}
 
@@ -256,12 +260,15 @@ func (m *mainModel) handleShellResult(msg shellResultMsg) (tea.Model, tea.Cmd) {
 	switch len(msg.options) {
 	case 0:
 		m.varState.isPromptOnly = true
-		if vs.prefill != "" {
+		if vs.prefill != "" && !msg.preserveInput {
 			m.textInput.SetValue(vs.prefill)
 			m.textInput.CursorEnd()
 		}
 	case 1:
 		m.varState.isPromptOnly = true
+		if msg.preserveInput {
+			break
+		}
 		prefill := vs.prefill
 		if prefill == "" {
 			prefill = applyMapTransform(msg.options[0], m.varState.selectOpts)
@@ -290,7 +297,7 @@ func (m *mainModel) handleShellResult(msg shellResultMsg) (tea.Model, tea.Cmd) {
 		} else {
 			m.varState.picker.SetItems(items)
 		}
-		if vs.prefill != "" {
+		if vs.prefill != "" && !msg.preserveInput {
 			m.textInput.SetValue(vs.prefill)
 			m.textInput.CursorEnd()
 		}
